@@ -91,24 +91,21 @@
   (puthash sym vec vc-bindings))
 
 (defun vc-bindings-fetch (sym)
-  "return dictionary binding, if it is stored (nil otherwise)"
-  (gethash sym vc-bindings))
+  "return dictionary binding, if it is stored (:not-found otherwise)"
+  (gethash sym vc-bindings :not-found))
+
+(defun vc-bindings-fetch! (sym)
+  "similar to `vc-binding-fetch', but crashes if nothing is binded to `sym'"
+  (let ((binding (vc-bindings-fetch sym)))
+    (if (eq :not-found binding)
+	(error "unresolved binding `%s'" sym)
+      binding)))
 
 (defun vc-bindings-checked-add (sym binding)
   "before calling `vc-bindings-add' checks if given `sym' is really a symbol"
   (if (symbolp sym)
       (vc-bindings-add sym binding)
     (error "invalid symbol `%s' given, can not bind to it" sym)))
-
-(defun vc-bindings-let-copy (to from)
-  "used in `let'; duplicate existing binding into new `to' place (key)"
-  (vc-bindings-checked-add to (vc-bindings-fetch from)))
-
-(defun vc-bindings-let-insert (sym binding)
-  "used in `let'; perferm checked insertion into bindings table"
-  (vc-bindings-checked-add sym (if (vectorp binding)
-				   (append binding nil)
-				 (cons binding nil))))
 
 ;;; [ TOKENS ]
 
@@ -141,12 +138,10 @@
 
 (defun vc-eval-symbol ()
   "launch builtin or user defined funtion"
-  (let ((binding (vc-bindings-fetch vc-token)))
-    (if binding
-	(if (functionp binding)
-	    (funcall binding) ; call predefined function
-	  (vc-tokens-prepend binding))
-      (error "can not resolve `%s' symbol" vc-token))))
+  (let ((binding (vc-bindings-fetch! vc-token)))
+    (if (functionp binding)
+	(funcall binding) ; call predefined function
+      (vc-tokens-prepend binding))))
 
 (defun vc-eval-token ()
   "process current token"
@@ -173,10 +168,11 @@
 (defun vc-command-describe (name)
   "print internal representation of `name' definition contents"
   (let* ((sym (intern-soft name))
-	 (vec (vc-bindings-fetch (vc-symbol-convert sym))))
-    (message "`%s' %s" sym (if vec
-			       vec
-			     "empty or undefined"))))
+	 (binding (vc-bindings-fetch (vc-symbol-convert sym))))
+    (message "`%s' %s" sym (pcase binding
+			     (`:not-found "undefined")
+			     (`nil "has empty body")
+			     (_ binding)))))
 
 (defun vc-query-command (msg)
   "parse `msg' and execute special command"
@@ -285,22 +281,22 @@
 ;;; [ BINDINGS ]
 
 (vc-bindings-defun
- 'bind ((token binding) nil) (vc-bindings-add (vci:sym! token)
-					      (if (vectorp binding)
-						  (append binding nil)
-						(cons binding nil))))
+ 'bind ((token binding) nil)
+ (let ((token (vci:to-sym-soft token))
+       (binding (vci:to-sym-soft binding)))
+   (cond ((symbolp binding)
+	  ;; duplicate binding from one key to another
+	  (vc-bindings-checked-add token (vc-bindings-fetch binding)))
+	 ((vectorp binding)
+	  ;; store new binding
+	  (vc-bindings-checked-add token (append binding nil)))
+	 (t (error "`bind': can bind only symbols and vectors")))))
 
 (vc-bindings-defun
- 'let ((token binding) nil) (let ((token (vci:to-sym-soft token))
-				  (binding (vci:to-sym-soft binding)))
-			      (if (symbolp binding)
-				  (vc-bindings-let-copy token binding)
-				(vc-bindings-let-insert token binding))))
-
-(vc-bindings-defun
- 'unbind (sym nil) (if (symbolp sym)
-		       (vc-bindings-remove sym)
-		     (error "unbind expects symbol as topmost stack element")))
+ 'unbind (token nil) (let ((sym (vci:to-sym-soft token)))
+		       (if (symbolp sym)
+			   (vc-bindings-remove sym)
+			 (error "`unbind': expected symbol at topmost"))))
 
 ;;; [ ENVIRONMENT COMMUNICATION ]
 

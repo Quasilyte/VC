@@ -3,15 +3,15 @@
 
 ;;; [ CONSTANTS ]
 
-(defconst vci-TRUE -1 "usign Forth convention, -1 for strict `true'")
-(defconst vci-FALSE 0 "zero is the only falsy value")
+(defconst vci:TRUE -1 "usign Forth convention, -1 for strict `true'")
+(defconst vci:FALSE 0 "zero is the only falsy value")
 
 ;;; [ FUNCTIONS ]
 
 (defun vci:scalar-filter (scalar)
   (pcase scalar
-    (`t vci-TRUE) 
-    (`nil vci-FALSE)
+    (`t vci:TRUE) 
+    (`nil vci:FALSE)
     (_ scalar)))
 
 (defun vci:get-type (any)
@@ -27,7 +27,7 @@
        (= ?\# (aref token 0))))
 
 (defun vci:hs-to-sym (hs)
-  "take hs, return symbol"
+  "take hs, return symbol; length checks are omitted"
   (intern (substring hs 1)))
 
 (defun vci:sym-to-hs (sym)
@@ -36,12 +36,12 @@
 
 (defun vci:hs-unpacked (maybe-hs)
   "take variable, return symbol if it is hs, unchanged otherwise"
-  (if (vci-hs-p maybe-hs)
-      (vci-hs-to-sym maybe-hs)
+  (if (vci:hs-p maybe-hs)
+      (vci:hs-to-sym maybe-hs)
     maybe-hs))
 
 (defun vci:to-sym-soft (token)
   "take `token', try to symbol-coerce it, if not possible, return unchanged"
   (cond ((symbolp token) token)
-	((vci-hs-p token) (vci-hs-to-sym token))
+	((vci:hs-p token) (vci:hs-to-sym token))
 	(t token)))
